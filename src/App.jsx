@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const LOCATIONS = ["Binghamton", "San Luis Obispo", "Santa Barbara", "Las Vegas"];
 const CATEGORIES = ["Beginner (V0–V3)", "Intermediate (V4–V6)", "Advanced (V7+)"];
-const WAVES = ["Wave 1", "Wave 2", "Wave 3", "Wave 4", "Wave 5", "Wave 6", "Wave 7", "Wave 8"];
+const DEFAULT_WAVES = ["Wave 1", "Wave 2", "Wave 3", "Wave 4", "Wave 5", "Wave 6", "Wave 7", "Wave 8"];
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -42,7 +42,9 @@ function App() {
 
   const canEdit = Boolean(session);
 
-  const waveStarts = useMemo(() => {
+  const availableWaves = useMemo(() => {
+  return Array.from(new Set([...DEFAULT_WAVES, ...waves.map((wave) => wave.name)]));
+}, [waves]);
     const starts = {};
     waves.forEach((wave) => {
       if (wave.started_at) starts[wave.name] = Date.parse(wave.started_at);
@@ -253,7 +255,15 @@ function App() {
     setParticipantForm(blankParticipantForm);
   }
 
-  async function startWave(selectedWave) {
+  function startWave(selectedWave) {
+  setWaveStarts((current) => ({ ...current, [selectedWave]: Date.now() }));
+}
+
+function addWave() {
+  const nextWaveNumber = waves.length + 1;
+  setWaves((current) => [...current, `Wave ${nextWaveNumber}`]);
+}
+
     if (requireStaff() || !eventRecord?.id) return;
 
     const { error } = await supabase
