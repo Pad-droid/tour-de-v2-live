@@ -43,8 +43,14 @@ function App() {
   const canEdit = Boolean(session);
 
   const availableWaves = useMemo(() => {
-  return Array.from(new Set([...DEFAULT_WAVES, ...waves.map((wave) => wave.name)]));
-}, [waves]);
+    return Array.from(new Set([...DEFAULT_WAVES, ...waves.map((wave) => wave.name)])).sort((a, b) => {
+      const aNum = Number(a.replace(/\D/g, ""));
+      const bNum = Number(b.replace(/\D/g, ""));
+      return aNum - bNum;
+    });
+  }, [waves]);
+
+  const waveStarts = useMemo(() => {
     const starts = {};
     waves.forEach((wave) => {
       if (wave.started_at) starts[wave.name] = Date.parse(wave.started_at);
@@ -255,23 +261,36 @@ function App() {
     setParticipantForm(blankParticipantForm);
   }
 
-  function startWave(selectedWave) {
-  setWaveStarts((current) => ({ ...current, [selectedWave]: Date.now() }));
-}
-
-function addWave() {
-  const nextWaveNumber = waves.length + 1;
-  setWaves((current) => [...current, `Wave ${nextWaveNumber}`]);
-}
-
+  async function startWave(selectedWave) {
     if (requireStaff() || !eventRecord?.id) return;
 
     const { error } = await supabase
       .from("waves")
       .upsert(
-        { event_id: eventRecord.id, name: selectedWave, started_at: new Date().toISOString() },
-        { onConflict: "event_id,name" }
+        {
+          event_id: eventRecord.id,
+          name: selectedWave,
+          started_at: new Date().toISOString()
+        },
+        {
+          onConflict: "event_id,name"
+        }
       );
+
+    if (error) alert(error.message);
+  }
+
+  async function addWave() {
+    if (requireStaff() || !eventRecord?.id) return;
+
+    const nextWaveNumber = availableWaves.length + 1;
+    const nextWaveName = `Wave ${nextWaveNumber}`;
+
+    const { error } = await supabase.from("waves").insert({
+      event_id: eventRecord.id,
+      name: nextWaveName,
+      started_at: null
+    });
 
     if (error) alert(error.message);
   }
@@ -493,7 +512,7 @@ function addWave() {
         </select>
         <label style={{ marginLeft: 20 }}>Wave / Heat: </label>
         <select style={inputStyle} value={participantForm.wave} onChange={(event) => updateParticipantForm("wave", event.target.value)} disabled={!canEdit}>
-          {WAVES.map((item) => <option style={optionStyle} key={item} value={item}>{item}</option>)}
+          {availableWaves.map((item) => <option style={optionStyle} key={item} value={item}>{item}</option>)}
         </select>
       </div>
       <button style={buttonStyle} onClick={addParticipant} disabled={!canEdit}>Add Participant</button>
@@ -544,12 +563,12 @@ function addWave() {
       </div>
 
       <div style={sectionStyle}>
-        <h2><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-  <h2>Manual Wave Control</h2>
-  <button style={buttonStyle} onClick={addWave} disabled={!canEdit}>+ Add Wave</button>
-</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2>Manual Wave Control</h2>
+          <button style={buttonStyle} onClick={addWave} disabled={!canEdit}>+ Add Wave</button>
+        </div>
         <p style={mutedStyle}>Click Start Wave when that group actually begins. Everyone assigned to that wave gets the same official start time.</p>
-        {WAVES.map((item) => (
+        {availableWaves.map((item) => (
           <div key={item} style={waveBoxStyle}>
             <strong>{item}</strong>
             <span style={{ marginLeft: 12 }}>Start: {waveStarts[item] ? formatClockTime(waveStarts[item]) : "Not started"}</span>
@@ -606,11 +625,11 @@ function addWave() {
           )}
 
           <h2>Scoring — {location}</h2>
-          <ParticipantScoringTable participants={participants} waves={WAVES} waveStarts={waveStarts} canEdit={canEdit} getElapsedSeconds={getElapsedSeconds} updateParticipant={updateParticipant} updateParticipantNumber={updateParticipantNumber} toggleVerified={toggleVerified} markParticipantExpired={markParticipantExpired} />
+          <ParticipantScoringTable participants={participants} waves={availableWaves} waveStarts={waveStarts} canEdit={canEdit} getElapsedSeconds={getElapsedSeconds} updateParticipant={updateParticipant} updateParticipantNumber={updateParticipantNumber} toggleVerified={toggleVerified} markParticipantExpired={markParticipantExpired} />
         </>
       )}
 
-      {activeTab === "participants" && <ParticipantsTable participants={participants} canEdit={canEdit} updateParticipant={updateParticipant} requestDeleteParticipant={requestDeleteParticipant} waveStarts={waveStarts} />}
+      {activeTab === "participants" && <ParticipantsTable participants={participants} waves={availableWaves} canEdit={canEdit} updateParticipant={updateParticipant} requestDeleteParticipant={requestDeleteParticipant} waveStarts={waveStarts} />}
       {activeTab === "results" && <ResultsView location={location} eventDate={eventDate} leaderboard={leaderboard} categoryLeaderboards={categoryLeaderboards} getElapsedSeconds={getElapsedSeconds} exportResultsCsv={exportResultsCsv} />}
       {activeTab === "display" && <DisplayScreen location={location} eventDate={eventDate} leaderboard={leaderboard} categoryLeaderboards={categoryLeaderboards} getElapsedSeconds={getElapsedSeconds} />}
     </div>
@@ -641,7 +660,7 @@ function ParticipantScoringTable({ participants, waves, waveStarts, canEdit, get
   );
 }
 
-function ParticipantsTable({ participants, canEdit, updateParticipant, requestDeleteParticipant, waveStarts }) {
+function ParticipantsTable({ participants, waves, canEdit, updateParticipant, requestDeleteParticipant, waveStarts }) {
   return (
     <>
       <h2>All Participants</h2>
@@ -655,7 +674,7 @@ function ParticipantsTable({ participants, canEdit, updateParticipant, requestDe
               <td style={cellStyle}><input value={participant.name} onChange={(event) => updateParticipant(participant.id, "name", event.target.value)} style={inputStyle} disabled={!canEdit} /></td>
               <td style={cellStyle}><select style={inputStyle} value={participant.category} onChange={(event) => updateParticipant(participant.id, "category", event.target.value)} disabled={!canEdit}>{CATEGORIES.map((item) => <option style={optionStyle} key={item} value={item}>{item}</option>)}</select></td>
               <td style={cellStyle}>{participant.location}</td>
-              <td style={cellStyle}><select style={inputStyle} value={participant.wave} onChange={(event) => updateParticipant(participant.id, "wave", event.target.value)} disabled={!canEdit}>{WAVES.map((item) => <option style={optionStyle} key={item} value={item}>{item}</option>)}</select></td>
+              <td style={cellStyle}><select style={inputStyle} value={participant.wave} onChange={(event) => updateParticipant(participant.id, "wave", event.target.value)} disabled={!canEdit}>{waves.map((item) => <option style={optionStyle} key={item} value={item}>{item}</option>)}</select></td>
               <td style={cellStyle}>{waveStarts[participant.wave] ? formatClockTime(waveStarts[participant.wave]) : "Not started"}</td>
               <td style={cellStyle}>{getParticipantStatus(participant, waveStarts[participant.wave])}</td>
               <td style={cellStyle}><button style={smallButtonStyle} onClick={() => requestDeleteParticipant(participant.id)} disabled={!canEdit}>Delete</button></td>
