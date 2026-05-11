@@ -544,7 +544,10 @@ function addWave() {
       </div>
 
       <div style={sectionStyle}>
-        <h2>Manual Wave Control</h2>
+        <h2><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  <h2>Manual Wave Control</h2>
+  <button style={buttonStyle} onClick={addWave} disabled={!canEdit}>+ Add Wave</button>
+</div>
         <p style={mutedStyle}>Click Start Wave when that group actually begins. Everyone assigned to that wave gets the same official start time.</p>
         {WAVES.map((item) => (
           <div key={item} style={waveBoxStyle}>
